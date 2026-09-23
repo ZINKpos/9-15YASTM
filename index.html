@@ -3954,7 +3954,8 @@
       const correct = safeJSON(q.correct_answer, 0);
       const ok = i === correct;
       btns[i].classList.add(ok ? 'correct' : 'wrong');
-      if (!ok) btns[correct].classList.add('reveal');
+      // Doğru şıkkı sadece ikinci yanlışta göster (Q_FIRST_WRONG henüz true ise ilk yanlış)
+      if (!ok && !Q_FIRST_WRONG) btns[correct].classList.add('reveal');
       logResult(ok);
       showFeedback(ok, ok ? q.feedback_ok : q.feedback_fail);
     }
@@ -4820,13 +4821,47 @@
         Q_RETRY = false;
         ANSWERED = false;
         showXpAlert('🃏 Ekstra hak kullanıldı!', true);
-        // Soruyu temiz render et
         renderQuestion();
-        // initJokers çağrılmadan sadece used flag'i set et sonra
+
+      } else if (type === 'hint') {
+        // İpucu — subtopic/soru metnine göre yönlendirici ipucu
+        const q = LEVEL_QUESTIONS[CUR];
+        const subtopic = (q.subtopic || '').toLowerCase();
+        const qtext = (q.question_text || '').toLowerCase();
+        let hint = '';
+
+        // Matematiksel işlem tespiti
+        if (subtopic.includes('çıkar') || qtext.includes('çıkar') || qtext.includes('eksi') || qtext.includes('farkı')) {
+          hint = '🔍 İpucu: Büyük sayıdan küçük sayıyı çıkar.';
+        } else if (subtopic.includes('topla') || qtext.includes('topla') || qtext.includes('artı') || qtext.includes('toplam')) {
+          hint = '🔍 İpucu: Sayıları bir araya getir ve topla.';
+        } else if (subtopic.includes('çarp') || qtext.includes('çarp') || qtext.includes('katı')) {
+          hint = '🔍 İpucu: Sayıyı o kadar kez kendisiyle topla.';
+        } else if (subtopic.includes('böl') || qtext.includes('böl') || qtext.includes('÷')) {
+          hint = '🔍 İpucu: Sayıyı eşit parçalara ayır.';
+        } else if (subtopic.includes('ritmik') || qtext.includes('→') || qtext.includes('dizi')) {
+          hint = '🔍 İpucu: Sayılar arasındaki farka bak — her adımda ne kadar artıyor?';
+        } else if (subtopic.includes('sırala') || q.format === 'sort') {
+          hint = '🔍 İpucu: Önce en küçük ya da en büyük olanı bul, oradan devam et.';
+        } else if (subtopic.includes('okuma') || q.format === 'read') {
+          hint = '🔍 İpucu: Metni bir kez daha dikkatlice oku.';
+        } else if (subtopic.includes('anlama') || subtopic.includes('parça')) {
+          hint = '🔍 İpucu: Metinde bu soruyla ilgili cümleyi bul ve altını çiz.';
+        } else if (subtopic.includes('eşleştir') || q.format === 'match') {
+          hint = '🔍 İpucu: Birini kesin biliyorsan önce onu eşleştir, geri kalanlar kolaylaşır.';
+        } else if (q.type === 'math') {
+          hint = '🔍 İpucu: İşlemin türüne bak — hangi işlemi yapman gerekiyor?';
+        } else {
+          hint = '🔍 İpucu: Soruyu baştan oku ve anahtar kelimelere odaklan.';
+        }
+
+        showXpAlert(hint, true);
       }
 
-      // Jokeri kullanıldı olarak işaretle
+      // Jokeri kullanıldı olarak işaretle ve envanterden çıkar
       j.used = true;
+      OWNED_ITEMS = OWNED_ITEMS.filter(id => id !== j.item.id);
+      saveXPToStorage();
       renderJokerBar();
     }
 
@@ -4976,18 +5011,20 @@
 
         console.log('HTML ready for print');
         
-        // Yeni pencerede aç ve yazdır
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(fullHtml);
-        printWindow.document.close();
-        
-        // Yazdırma dialog'unu göster
+        // Blob URL ile aç — popup blocker'dan etkilenmez
+        const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
         setTimeout(() => {
-          printWindow.print();
-          printWindow.close();
-        }, 500);
-
-        console.log('Print dialog opened');
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        }, 5000);
+        console.log('PDF opened via Blob URL');
 
       } catch (e) {
         console.error('PDF error:', e);
